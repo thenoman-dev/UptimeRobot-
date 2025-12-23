@@ -1,6 +1,7 @@
+import os, sys, json, threading
+from flask import Flask
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-import json, os, sys
 
 # ========= ENV CONFIG =========
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -13,6 +14,18 @@ if not BOT_TOKEN or not ADMIN_ID:
 
 ADMIN_ID = int(ADMIN_ID)
 # ==============================
+
+
+# ========= FLASK (KEEP ALIVE) =========
+web = Flask(__name__)
+
+@web.route("/")
+def home():
+    return "✅ Task Tracker Bot is alive!"
+
+def run_web():
+    web.run(host="0.0.0.0", port=10000)
+# ====================================
 
 
 # ---------- Data Utils ----------
@@ -39,7 +52,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-# ➕ Add work (today + total + due)
+# ➕ Add work
 async def add_work(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update):
         return await update.message.reply_text("❌ এই কমান্ড শুধু Admin ব্যবহার করতে পারবে")
@@ -53,12 +66,7 @@ async def add_work(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = load_data()
 
     if name not in data:
-        data[name] = {
-            "total": 0,
-            "today": 0,
-            "due": 0,
-            "paid_amount": 0
-        }
+        data[name] = {"total": 0, "today": 0, "due": 0, "paid_amount": 0}
 
     data[name]["total"] += amount
     data[name]["today"] += amount
@@ -68,7 +76,7 @@ async def add_work(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"✅ {name} আজকে {amount}টা কাজ করেছে")
 
 
-# 💰 Payment দেওয়া
+# 💰 Payment
 async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update):
         return await update.message.reply_text("❌ শুধু Admin")
@@ -86,10 +94,10 @@ async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data[name]["paid_amount"] += amount
     save_data(data)
 
-    await update.message.reply_text(f"💰 {name} কে {amount} টাকা পরিশোধ করা হয়েছে")
+    await update.message.reply_text(f"💰 {name} কে {amount} টাকা দেওয়া হয়েছে")
 
 
-# 🔄 Set due manually
+# 🔄 Set due
 async def set_due(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update):
         return await update.message.reply_text("❌ শুধু Admin")
@@ -110,7 +118,7 @@ async def set_due(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"⏳ {name} এর বাকি কাজ সেট করা হয়েছে: {amount}")
 
 
-# 📋 Today reset
+# 📋 Reset today
 async def reset_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update):
         return await update.message.reply_text("❌ শুধু Admin")
@@ -123,7 +131,7 @@ async def reset_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🔄 আজকের কাজ রিসেট করা হয়েছে")
 
 
-# 📊 List (for everyone)
+# 📊 List
 async def list_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = load_data()
     if not data:
@@ -137,7 +145,7 @@ async def list_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg)
 
 
-# 👤 Details of one person
+# 👤 Details
 async def details(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         name = context.args[0]
@@ -157,20 +165,26 @@ async def details(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⏳ পেমেন্ট বাকি কাজ: {u['due']}\n"
         f"💰 পরিশোধ করা টাকা: {u['paid_amount']}"
     )
-
     await update.message.reply_text(text)
 
 
-# ---------- Bot Init ----------
-app = ApplicationBuilder().token(BOT_TOKEN).build()
+# ---------- Telegram Bot ----------
+def run_bot():
+    bot = ApplicationBuilder().token(BOT_TOKEN).build()
 
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("add", add_work))
-app.add_handler(CommandHandler("pay", pay))
-app.add_handler(CommandHandler("setdue", set_due))
-app.add_handler(CommandHandler("reset_today", reset_today))
-app.add_handler(CommandHandler("list", list_all))
-app.add_handler(CommandHandler("details", details))
+    bot.add_handler(CommandHandler("start", start))
+    bot.add_handler(CommandHandler("add", add_work))
+    bot.add_handler(CommandHandler("pay", pay))
+    bot.add_handler(CommandHandler("setdue", set_due))
+    bot.add_handler(CommandHandler("reset_today", reset_today))
+    bot.add_handler(CommandHandler("list", list_all))
+    bot.add_handler(CommandHandler("details", details))
 
-print("🤖 Bot is running (Render mode)...")
-app.run_polling()
+    print("🤖 Telegram Bot running...")
+    bot.run_polling()
+
+
+# ---------- Main ----------
+if __name__ == "__main__":
+    threading.Thread(target=run_web).start()
+    run_bot()
